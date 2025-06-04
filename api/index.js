@@ -28,7 +28,7 @@ async function run() {
     await client.connect();
     console.log("✅ MongoDB Connected");
 
-    const db = client.db("hotelDB");
+    const db = client.db("HotelDB");
     roomsCollection = db.collection("rooms");
     bookingsCollection = db.collection("bookings");
   } catch (err) {
