@@ -32,7 +32,7 @@ async function run() {
     roomsCollection = db.collection("rooms");
     bookingsCollection = db.collection("bookings");
   } catch (err) {
-    console.error("MongoDB connection failed:", err);
+    console.error("❌ MongoDB connection failed:", err);
   }
 }
 run();
@@ -69,6 +69,7 @@ app.get("/rooms", async (req, res) => {
     const result = await roomsCollection.find().toArray();
     res.send(result);
   } catch (error) {
+    console.error("❌ Error in /rooms:", error.message);
     res.status(500).send({ error: "Failed to fetch rooms" });
   }
 });
@@ -113,6 +114,14 @@ app.get("/bookings", verifyToken, async (req, res) => {
 app.get("/", (req, res) => {
   res.send("Hotel Booking Server is Running 🏨");
 });
+
+// ✅ Handle local dev vs Vercel
+if (process.env.NODE_ENV !== "production") {
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`🚀 Server running locally on http://localhost:${port}`);
+  });
+}
 
 // ✅ Export for Vercel
 module.exports = app;
