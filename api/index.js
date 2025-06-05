@@ -21,14 +21,15 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 
 let roomsCollection;
 let bookingsCollection;
+let reviewsCollection; // ✅ New collection for reviews
 
-// MongoDB connection (Vercel এর জন্য await গুলো comment করে দেওয়া হলো)
 async function run() {
   try {
     // await client.connect();
     const db = client.db("HotelDB");
     roomsCollection = db.collection("rooms");
     bookingsCollection = db.collection("bookings");
+    reviewsCollection = db.collection("reviews"); // ✅ Initialize reviews collection
 
     // await client.db("admin").command({ ping: 1 });
     console.log("✅ MongoDB Ready (Vercel)");
@@ -105,6 +106,44 @@ app.get("/bookings", verifyToken, async (req, res) => {
     res.send(result);
   } catch (error) {
     res.status(500).send({ error: "Failed to fetch bookings" });
+  }
+});
+
+// ✅ Cancel booking
+app.delete("/bookings/:id", verifyToken, async (req, res) => {
+  const id = req.params.id;
+  try {
+    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to cancel booking" });
+  }
+});
+
+// ✅ Update booking date
+app.patch("/bookings/:id", verifyToken, async (req, res) => {
+  const id = req.params.id;
+  const { date } = req.body;
+  try {
+    const result = await bookingsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { date } }
+    );
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to update booking date" });
+  }
+});
+
+// ✅ Submit review
+app.post("/reviews", verifyToken, async (req, res) => {
+  const { roomId, userName, rating, comment } = req.body;
+  try {
+    const review = { roomId, userName, rating, comment, createdAt: new Date() };
+    const result = await reviewsCollection.insertOne(review);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to submit review" });
   }
 });
 
