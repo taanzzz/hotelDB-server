@@ -22,17 +22,18 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 let roomsCollection;
 let bookingsCollection;
 
-// Run MongoDB only once
+// MongoDB connection (Vercel এর জন্য await গুলো comment করে দেওয়া হলো)
 async function run() {
   try {
-    await client.connect();
-    console.log("✅ MongoDB Connected");
-
+    // await client.connect();
     const db = client.db("HotelDB");
     roomsCollection = db.collection("rooms");
     bookingsCollection = db.collection("bookings");
+
+    // await client.db("admin").command({ ping: 1 });
+    console.log("✅ MongoDB Ready (Vercel)");
   } catch (err) {
-    console.error("❌ MongoDB connection failed:", err);
+    console.error("❌ MongoDB error:", err);
   }
 }
 run();
@@ -40,9 +41,7 @@ run();
 // JWT Token API
 app.post("/jwt", (req, res) => {
   const user = req.body;
-  const token = jwt.sign(user, process.env.JWT_SECRET, {
-    expiresIn: "1d",
-  });
+  const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1d" });
   res.send({ token });
 });
 
@@ -69,7 +68,6 @@ app.get("/rooms", async (req, res) => {
     const result = await roomsCollection.find().toArray();
     res.send(result);
   } catch (error) {
-    console.error("❌ Error in /rooms:", error.message);
     res.status(500).send({ error: "Failed to fetch rooms" });
   }
 });
@@ -96,7 +94,7 @@ app.post("/bookings", verifyToken, async (req, res) => {
   }
 });
 
-// Get user's bookings
+// Get user bookings
 app.get("/bookings", verifyToken, async (req, res) => {
   const email = req.query.email;
   if (req.decoded.email !== email) {
@@ -115,13 +113,13 @@ app.get("/", (req, res) => {
   res.send("Hotel Booking Server is Running 🏨");
 });
 
-// ✅ Handle local dev vs Vercel
+// Local run (only if not Vercel)
 if (process.env.NODE_ENV !== "production") {
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
-    console.log(`🚀 Server running locally on http://localhost:${port}`);
+    console.log(`🚀 Server running at http://localhost:${port}`);
   });
 }
 
-// ✅ Export for Vercel
+// Export app for Vercel
 module.exports = app;
