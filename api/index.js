@@ -6,11 +6,11 @@ require("dotenv").config();
 
 const app = express();
 
-// middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// MongoDB connection
+// MongoDB Connection
 const client = new MongoClient(process.env.MONGODB_URI, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -21,17 +21,15 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 
 let roomsCollection;
 let bookingsCollection;
-let reviewsCollection; // ✅ New collection for reviews
+let reviewsCollection;
 
 async function run() {
   try {
-    // await client.connect();
     const db = client.db("HotelDB");
     roomsCollection = db.collection("rooms");
     bookingsCollection = db.collection("bookings");
-    reviewsCollection = db.collection("reviews"); // ✅ Initialize reviews collection
+    reviewsCollection = db.collection("reviews");
 
-    // await client.db("admin").command({ ping: 1 });
     console.log("✅ MongoDB Ready (Vercel)");
   } catch (err) {
     console.error("❌ MongoDB error:", err);
@@ -39,14 +37,14 @@ async function run() {
 }
 run();
 
-// JWT Token API
+// JWT Token Endpoint
 app.post("/jwt", (req, res) => {
   const user = req.body;
   const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1d" });
   res.send({ token });
 });
 
-// Middleware to verify token
+// JWT Middleware
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -63,6 +61,9 @@ function verifyToken(req, res, next) {
   });
 }
 
+// Routes
+// -------------------- Rooms --------------------
+
 // Get all rooms
 app.get("/rooms", async (req, res) => {
   try {
@@ -73,7 +74,7 @@ app.get("/rooms", async (req, res) => {
   }
 });
 
-// Get single room
+// Get single room by ID
 app.get("/rooms/:id", async (req, res) => {
   try {
     const id = req.params.id;
@@ -83,6 +84,8 @@ app.get("/rooms/:id", async (req, res) => {
     res.status(500).send({ error: "Failed to fetch room" });
   }
 });
+
+// -------------------- Bookings --------------------
 
 // Book a room
 app.post("/bookings", verifyToken, async (req, res) => {
@@ -95,7 +98,7 @@ app.post("/bookings", verifyToken, async (req, res) => {
   }
 });
 
-// Get user bookings
+// Get bookings for a specific user
 app.get("/bookings", verifyToken, async (req, res) => {
   const email = req.query.email;
   if (req.decoded.email !== email) {
@@ -109,7 +112,7 @@ app.get("/bookings", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Cancel booking
+// Cancel a booking
 app.delete("/bookings/:id", verifyToken, async (req, res) => {
   const id = req.params.id;
   try {
@@ -120,7 +123,7 @@ app.delete("/bookings/:id", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Update booking date
+// Update booking date
 app.patch("/bookings/:id", verifyToken, async (req, res) => {
   const id = req.params.id;
   const { date } = req.body;
@@ -135,7 +138,9 @@ app.patch("/bookings/:id", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Submit review
+// -------------------- Reviews --------------------
+
+// Submit a review
 app.post("/reviews", verifyToken, async (req, res) => {
   const { roomId, userName, rating, comment } = req.body;
   try {
@@ -147,12 +152,26 @@ app.post("/reviews", verifyToken, async (req, res) => {
   }
 });
 
-// Root route
-app.get("/", (req, res) => {
-  res.send("Hotel Booking Server is Running 🏨");
+// ✅ Get reviews for a specific room
+app.get("/reviews/:roomId", async (req, res) => {
+  const { roomId } = req.params;
+  try {
+    const result = await reviewsCollection
+      .find({ roomId })
+      .sort({ createdAt: -1 })
+      .toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch reviews" });
+  }
 });
 
-// Local run (only if not Vercel)
+// -------------------- Root --------------------
+app.get("/", (req, res) => {
+  res.send("🏨 Hotel Booking Server is Running");
+});
+
+// Local server for development
 if (process.env.NODE_ENV !== "production") {
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
@@ -160,5 +179,5 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
-// Export app for Vercel
+// Export for Vercel
 module.exports = app;
