@@ -61,7 +61,6 @@ function verifyToken(req, res, next) {
   });
 }
 
-// Routes
 // -------------------- Rooms --------------------
 
 // Get all rooms
@@ -87,10 +86,34 @@ app.get("/rooms/:id", async (req, res) => {
 
 // -------------------- Bookings --------------------
 
-// Book a room
+// Book a room (with duplicate check)
 app.post("/bookings", verifyToken, async (req, res) => {
   try {
     const booking = req.body;
+    const { roomId, email, date } = booking;
+
+    // Check if the same user already booked the same room on the same date
+    const existingUserBooking = await bookingsCollection.findOne({
+      roomId,
+      email,
+      date,
+    });
+
+    if (existingUserBooking) {
+      return res.status(400).send({ message: "You already booked this room on this date" });
+    }
+
+    // Check if the room is already booked by anyone on that date
+    const existingRoomBooking = await bookingsCollection.findOne({
+      roomId,
+      date,
+    });
+
+    if (existingRoomBooking) {
+      return res.status(409).send({ message: "Room already booked on this date" });
+    }
+
+    // Insert booking if all good
     const result = await bookingsCollection.insertOne(booking);
     res.send(result);
   } catch (error) {
@@ -98,7 +121,7 @@ app.post("/bookings", verifyToken, async (req, res) => {
   }
 });
 
-// Get bookings for a specific user
+// Get bookings for a specific user by email (query param version)
 app.get("/bookings", verifyToken, async (req, res) => {
   const email = req.query.email;
   if (req.decoded.email !== email) {
@@ -109,6 +132,31 @@ app.get("/bookings", verifyToken, async (req, res) => {
     res.send(result);
   } catch (error) {
     res.status(500).send({ error: "Failed to fetch bookings" });
+  }
+});
+
+// New: Get bookings for a specific room on a specific date
+app.get("/bookings/room/:roomId/date/:date", async (req, res) => {
+  try {
+    const { roomId, date } = req.params;
+    const result = await bookingsCollection.find({ roomId, date }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch room bookings for date" });
+  }
+});
+
+// New: Get bookings for a specific user by email (path param version)
+app.get("/bookings/user/:email", verifyToken, async (req, res) => {
+  const { email } = req.params;
+  if (req.decoded.email !== email) {
+    return res.status(403).send({ message: "Forbidden Access" });
+  }
+  try {
+    const result = await bookingsCollection.find({ email }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch user bookings" });
   }
 });
 
@@ -128,6 +176,17 @@ app.patch("/bookings/:id", verifyToken, async (req, res) => {
   const id = req.params.id;
   const { date } = req.body;
   try {
+    // Before updating, check if the room is already booked by anyone else on that new date
+    const existingBooking = await bookingsCollection.findOne({
+      roomId: req.body.roomId,  // Make sure client sends roomId with patch request
+      date,
+      _id: { $ne: new ObjectId(id) }, // exclude current booking itself
+    });
+
+    if (existingBooking) {
+      return res.status(409).send({ message: "Room already booked on this date" });
+    }
+
     const result = await bookingsCollection.updateOne(
       { _id: new ObjectId(id) },
       { $set: { date } }
@@ -152,7 +211,7 @@ app.post("/reviews", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Get reviews for a specific room
+// Get reviews for a specific room
 app.get("/reviews/:roomId", async (req, res) => {
   const { roomId } = req.params;
   try {
