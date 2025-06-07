@@ -193,6 +193,9 @@ app.get("/bookings/user/:email", verifyToken, async (req, res) => {
 });
 
 // Cancel a booking
+// index.js
+
+// Cancel a booking
 app.delete("/bookings/:id", async (req, res) => {
   const bookingId = req.params.id;
 
@@ -209,10 +212,11 @@ app.delete("/bookings/:id", async (req, res) => {
     // 2. Delete the booking
     await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
 
-    // 3. Update the corresponding room to set available: true
+    // 3. Update the corresponding room to set isBooked: false
+    //    This is the key change
     await roomsCollection.updateOne(
       { _id: new ObjectId(roomId) },
-      { $set: { isAvailable: true } }
+      { $set: { isBooked: false, isAvailable: true } } // Explicitly set both fields for clarity
     );
 
     res.send({ message: "Booking cancelled and room marked as available" });
