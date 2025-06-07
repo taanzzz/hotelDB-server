@@ -99,6 +99,23 @@ app.get("/rooms/:id", async (req, res) => {
   }
 });
 
+app.patch("/rooms/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const update = {
+      $set: {
+        isAvailable: false,
+        isBooked: true
+      }
+    };
+    const result = await roomsCollection.updateOne({ _id: new ObjectId(id) }, update);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to update room status" });
+  }
+});
+
+
 // -------------------- Bookings --------------------
 
 // Book a room (with duplicate check)
