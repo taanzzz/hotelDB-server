@@ -193,15 +193,35 @@ app.get("/bookings/user/:email", verifyToken, async (req, res) => {
 });
 
 // Cancel a booking
-app.delete("/bookings/:id", verifyToken, async (req, res) => {
-  const id = req.params.id;
+app.delete("/bookings/:id", async (req, res) => {
+  const bookingId = req.params.id;
+
   try {
-    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
-    res.send(result);
+    // 1. Find the booking to get roomId
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(bookingId) });
+
+    if (!booking) {
+      return res.status(404).send({ message: "Booking not found" });
+    }
+
+    const roomId = booking.roomId;
+
+    // 2. Delete the booking
+    await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
+
+    // 3. Update the corresponding room to set available: true
+    await roomsCollection.updateOne(
+      { _id: new ObjectId(roomId) },
+      { $set: { isAvailable: true } }
+    );
+
+    res.send({ message: "Booking cancelled and room marked as available" });
   } catch (error) {
-    res.status(500).send({ error: "Failed to cancel booking" });
+    console.error("Error cancelling booking:", error);
+    res.status(500).send({ message: "Server error" });
   }
 });
+
 
 // Update booking date
 app.patch("/bookings/:id", verifyToken, async (req, res) => {
