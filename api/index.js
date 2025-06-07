@@ -65,23 +65,27 @@ function verifyToken(req, res, next) {
 
 // Get all rooms
 // Get all rooms (with optional price range filter)
-app.get("/rooms", async (req, res) => {
+app.get('/rooms', async (req, res) => {
   try {
-    const min = parseFloat(req.query.min);
-    const max = parseFloat(req.query.max);
+    const { minPrice, maxPrice } = req.query;
 
     let query = {};
 
-    if (!isNaN(min) && !isNaN(max)) {
-      query.price = { $gte: min, $lte: max };
+    if (minPrice && maxPrice) {
+      query.price = {
+        $gte: parseFloat(minPrice),
+        $lte: parseFloat(maxPrice)
+      };
     }
 
-    const result = await roomsCollection.find(query).toArray();
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch rooms" });
+    const rooms = await roomsCollection.find(query).toArray();
+    res.send(rooms);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: 'Internal server error' });
   }
 });
+
 
 
 // Get single room by ID
