@@ -201,15 +201,24 @@ app.patch("/bookings/:id", verifyToken, async (req, res) => {
 
 // Submit a review
 app.post("/reviews", verifyToken, async (req, res) => {
-  const { roomId, userName, rating, comment } = req.body;
+  const { roomId, username, userEmail, userPhoto, rating, comment } = req.body;
   try {
-    const review = { roomId, userName, rating, comment, createdAt: new Date() };
+    const review = {
+      roomId,
+      username,         // Use consistent name for display
+      userEmail,
+      userPhoto,
+      rating,
+      comment,
+      createdAt: new Date(),  // Now matches your sort field
+    };
     const result = await reviewsCollection.insertOne(review);
     res.send(result);
   } catch (error) {
     res.status(500).send({ error: "Failed to submit review" });
   }
 });
+
 
 // Get reviews for a specific room
 app.get("/reviews/:roomId", async (req, res) => {
