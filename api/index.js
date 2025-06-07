@@ -64,14 +64,25 @@ function verifyToken(req, res, next) {
 // -------------------- Rooms --------------------
 
 // Get all rooms
+// Get all rooms (with optional price range filter)
 app.get("/rooms", async (req, res) => {
   try {
-    const result = await roomsCollection.find().toArray();
+    const min = parseFloat(req.query.min);
+    const max = parseFloat(req.query.max);
+
+    let query = {};
+
+    if (!isNaN(min) && !isNaN(max)) {
+      query.price = { $gte: min, $lte: max };
+    }
+
+    const result = await roomsCollection.find(query).toArray();
     res.send(result);
   } catch (error) {
     res.status(500).send({ error: "Failed to fetch rooms" });
   }
 });
+
 
 // Get single room by ID
 app.get("/rooms/:id", async (req, res) => {
@@ -205,12 +216,12 @@ app.post("/reviews", verifyToken, async (req, res) => {
   try {
     const review = {
       roomId,
-      username,         // Use consistent name for display
+      username,         
       userEmail,
       userPhoto,
       rating,
       comment,
-      createdAt: new Date(),  // Now matches your sort field
+      createdAt: new Date(),  
     };
     const result = await reviewsCollection.insertOne(review);
     res.send(result);
