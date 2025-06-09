@@ -275,6 +275,15 @@ app.post("/reviews", verifyToken, async (req, res) => {
   }
 });
 
+// Get all reviews
+app.get("/reviews", async (req, res) => {
+  try {
+    const result = await reviewsCollection.find().toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch all reviews" });
+  }
+});
 
 // Get reviews for a specific room
 app.get("/reviews/:roomId", async (req, res) => {
