@@ -86,6 +86,19 @@ app.get('/rooms', async (req, res) => {
   }
 });
 
+// Get Top 6 Rooms by Rating
+app.get("/rooms/featured/top-rated", async (req, res) => {
+  try {
+    const topRooms = await roomsCollection
+      .find()
+      .sort({ rating: -1 })
+      .limit(6)
+      .toArray();
+    res.send(topRooms);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch top-rated rooms" });
+  }
+});
 
 
 // Get single room by ID
