@@ -1,5 +1,3 @@
-// index.js
-
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
@@ -32,7 +30,7 @@ async function run() {
     bookingsCollection = db.collection("bookings");
     reviewsCollection = db.collection("reviews");
 
-    console.log("✅ MongoDB Ready (Vercel)");
+    console.log("✅ MongoDB Ready");
   } catch (err) {
     console.error("❌ MongoDB error:", err);
   }
@@ -63,9 +61,9 @@ function verifyToken(req, res, next) {
   });
 }
 
-// -------------------- Rooms --------------------
+// -------------------- Rooms Part --------------------
 
-// Get all rooms (with optional price range filter)
+// Get all rooms (with price range filter)
 app.get('/rooms', async (req, res) => {
   try {
     const { minPrice, maxPrice } = req.query;
@@ -114,28 +112,10 @@ app.get("/rooms/:id", async (req, res) => {
 });
 
 
-// !!! --- এই কোড ব্লকটি এখন আর দরকার নেই, তাই এটি বাদ দেওয়া হয়েছে --- !!!
-// কারণ রুমের availability এখন তারিখের উপর নির্ভরশীল, রুমের নিজস্ব property নয়।
-/*
-app.patch("/rooms/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
-    const update = {
-      $set: {
-        isAvailable: false,
-        isBooked: true
-      }
-    };
-    const result = await roomsCollection.updateOne({ _id: new ObjectId(id) }, update);
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to update room status" });
-  }
-});
-*/
 
 
-// -------------------- Bookings --------------------
+
+// -------------------- Bookings Part --------------------
 
 // Book a room (with duplicate check)
 app.post("/bookings", verifyToken, async (req, res) => {
@@ -143,7 +123,7 @@ app.post("/bookings", verifyToken, async (req, res) => {
     const booking = req.body;
     const { roomId, email, date } = booking;
 
-    // Check if the same user already booked the same room on the same date
+    // Verify whether the user has already booked this room for the selected date.
     const existingUserBooking = await bookingsCollection.findOne({
       roomId,
       email,
@@ -154,7 +134,7 @@ app.post("/bookings", verifyToken, async (req, res) => {
       return res.status(400).send({ message: "You already booked this room on this date" });
     }
 
-    // Check if the room is already booked by anyone on that date
+    // Check whether the room has already been booked by another user for the selected date.
     const existingRoomBooking = await bookingsCollection.findOne({
       roomId,
       date,
@@ -172,7 +152,7 @@ app.post("/bookings", verifyToken, async (req, res) => {
   }
 });
 
-// Get bookings for a specific user by email (query param version)
+// Get bookings for a specific user by email 
 app.get("/bookings", verifyToken, async (req, res) => {
   const email = req.query.email;
   if (req.decoded.email !== email) {
@@ -186,7 +166,7 @@ app.get("/bookings", verifyToken, async (req, res) => {
   }
 });
 
-// === নতুন যোগ করা হয়েছে: একটি নির্দিষ্ট রুমের জন্য বুক করা তারিখগুলো পাওয়া ===
+// Retrieve all booked dates for a specific room.
 app.get("/bookings/room/:roomId/dates", async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -201,7 +181,7 @@ app.get("/bookings/room/:roomId/dates", async (req, res) => {
 });
 
 
-// === নতুন যোগ করা হয়েছে: একজন ব্যবহারকারী এই রুমটি বুক করেছেন কিনা তা পরীক্ষা করা ===
+// Check if a user has already booked this room.
 app.get("/bookings/check", verifyToken, async (req, res) => {
   const { roomId, email } = req.query;
 
@@ -211,14 +191,14 @@ app.get("/bookings/check", verifyToken, async (req, res) => {
 
   try {
     const existingBooking = await bookingsCollection.findOne({ roomId, email });
-    res.send({ hasBooked: !!existingBooking }); // true or false পাঠাবে
+    res.send({ hasBooked: !!existingBooking }); 
   } catch (error) {
     res.status(500).send({ error: "Failed to check booking status" });
   }
 });
 
 
-// New: Get bookings for a specific room on a specific date
+// Get bookings for a specific room on a specific date
 app.get("/bookings/room/:roomId/date/:date", async (req, res) => {
   try {
     const { roomId, date } = req.params;
@@ -229,7 +209,7 @@ app.get("/bookings/room/:roomId/date/:date", async (req, res) => {
   }
 });
 
-// New: Get bookings for a specific user by email (path param version)
+// Get bookings for a specific user by email 
 app.get("/bookings/user/:email", verifyToken, async (req, res) => {
   const { email } = req.params;
   if (req.decoded.email !== email) {
@@ -269,9 +249,9 @@ app.patch("/bookings/:id", verifyToken, async (req, res) => {
   try {
     // Before updating, check if the room is already booked by anyone else on that new date
     const existingBooking = await bookingsCollection.findOne({
-      roomId: req.body.roomId,  // Make sure client sends roomId with patch request
+      roomId: req.body.roomId, 
       date,
-      _id: { $ne: new ObjectId(id) }, // exclude current booking itself
+      _id: { $ne: new ObjectId(id) }, 
     });
 
     if (existingBooking) {
@@ -288,7 +268,7 @@ app.patch("/bookings/:id", verifyToken, async (req, res) => {
   }
 });
 
-// -------------------- Reviews --------------------
+// -------------------- Reviews Part --------------------
 
 // Submit a review
 app.post("/reviews", verifyToken, async (req, res) => {
