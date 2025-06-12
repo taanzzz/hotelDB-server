@@ -116,38 +116,40 @@ app.get("/rooms/:id", async (req, res) => {
 // -------------------- Bookings Part --------------------
 
 // Book a room (with duplicate check)
+// Book a room (with duplicate check)
 app.post("/bookings", verifyToken, async (req, res) => {
-  try {
-    const booking = req.body;
-    const { roomId, email, date } = booking;
+  try {
+    const booking = req.body;
+    const { roomId, email, date } = booking;
 
-    // Verify whether the user has already booked this room for the selected date.
-    const existingUserBooking = await bookingsCollection.findOne({
-      roomId,
-      email,
-      date,
-    });
+    // MODIFIED: Check if the user has already booked this room on ANY date.
+    const existingUserBooking = await bookingsCollection.findOne({
+      roomId,
+      email, // We remove the 'date' field from this query
+    });
 
-    if (existingUserBooking) {
-      return res.status(400).send({ message: "You already booked this room on this date" });
-    }
+    if (existingUserBooking) {
+      // Send a clear message that they've already booked this room.
+      return res.status(400).send({ message: "You have already booked this room. Please cancel the existing one to book again." });
+    }
 
-    // Check whether the room has already been booked by another user for the selected date.
-    const existingRoomBooking = await bookingsCollection.findOne({
-      roomId,
-      date,
-    });
+    // This check remains the same: Check if the room is available on the selected date for ANY user.
+    const existingRoomBooking = await bookingsCollection.findOne({
+      roomId,
+      date,
+    });
 
-    if (existingRoomBooking) {
-      return res.status(409).send({ message: "Room already booked on this date" });
-    }
+    if (existingRoomBooking) {
+      return res.status(409).send({ message: "Room already booked on this date by someone else" });
+    }
 
-    // Insert booking if all good
-    const result = await bookingsCollection.insertOne(booking);
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to book room" });
-  }
+    // Insert booking if all good
+    const result = await bookingsCollection.insertOne(booking);
+    res.send(result);
+  } catch (error) {
+    console.error("Booking Error:", error);
+    res.status(500).send({ error: "Failed to book room" });
+  }
 });
 
 // Get bookings for a specific user by email
@@ -165,7 +167,7 @@ app.get("/bookings", verifyToken, async (req, res) => {
   }
 });
 
-// GET A SINGLE BOOKING BY ID (এই নতুন রুটটি যোগ করুন)
+// GET A SINGLE BOOKING BY ID 
 app.get("/bookings/:id", verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
@@ -175,7 +177,7 @@ app.get("/bookings/:id", verifyToken, async (req, res) => {
       return res.status(404).send({ message: "Booking not found" });
     }
 
-    // নিরাপত্তা যাচাই: যিনি বুকিং করেছেন, শুধু তিনিই যেন এটি দেখতে পান
+    
     if (req.decoded.email !== booking.email) {
       return res.status(403).send({ message: "Forbidden Access" });
     }
