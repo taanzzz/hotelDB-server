@@ -166,6 +166,33 @@ app.get("/bookings", verifyToken, async (req, res) => {
   }
 });
 
+// Get a single booking by its ID
+app.get("/booking/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Check if the ID is a valid MongoDB ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid booking ID format" });
+    }
+
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!booking) {
+      return res.status(404).send({ message: "Booking not found" });
+    }
+
+    // Authorization check: ensure the user requesting the booking is the one who made it
+    if (req.decoded.email !== booking.email) {
+      return res.status(403).send({ message: "Forbidden Access" });
+    }
+
+    res.send(booking);
+  } catch (error) {
+    console.error("Error fetching single booking:", error);
+    res.status(500).send({ error: "Failed to fetch booking details" });
+  }
+});
+
 // Retrieve all booked dates for a specific room.
 app.get("/bookings/room/:roomId/dates", async (req, res) => {
   try {
