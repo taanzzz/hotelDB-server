@@ -114,76 +114,46 @@ app.get("/rooms/:id", async (req, res) => {
 
 
 
-
 // -------------------- Bookings Part --------------------
 
-// Book a room (with duplicate check)
-app.post("/bookings", verifyToken, async (req, res) => {
-  try {
-    const booking = req.body;
-    const { roomId, email, date } = booking;
-
-    // Verify whether the user has already booked this room for the selected date.
-    const existingUserBooking = await bookingsCollection.findOne({
-      roomId,
-      email,
-      date,
-    });
-
-    if (existingUserBooking) {
-      return res.status(400).send({ message: "You already booked this room on this date" });
-    }
-
-    // Check whether the room has already been booked by another user for the selected date.
-    const existingRoomBooking = await bookingsCollection.findOne({
-      roomId,
-      date,
-    });
-
-    if (existingRoomBooking) {
-      return res.status(409).send({ message: "Room already booked on this date" });
-    }
-
-    // Insert booking if all good
-    const result = await bookingsCollection.insertOne(booking);
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to book room" });
-  }
-});
-
+// ডেট রেঞ্জ বুক করার জন্য আপডেট করা এন্ডপয়েন্ট
 app.post("/bookings/range", verifyToken, async (req, res) => {
   try {
-    const { roomId, email, dates, totalPrice, roomName, image, price } = req.body;
+    const { roomId, email, checkIn, checkOut, nights, totalPrice, roomName, image, price } = req.body;
 
-    // ১. চেক করুন যে পাঠানো তারিখগুলোর কোনোটি ইতোমধ্যে বুক করা আছে কিনা
-    // $in operator দিয়ে অ্যারের সব তারিখ একসাথে ডেটাবেসে খোঁজা হয়
+    // ১. চেক করুন যে এই রেঞ্জের কোনো তারিখ অন্য কোনো বুকিং রেঞ্জের সাথে ওভারল্যাপ করছে কিনা
     const existingBooking = await bookingsCollection.findOne({
       roomId: roomId,
-      date: { $in: dates } 
+      $or: [
+        { checkIn: { $lt: checkOut, $gte: checkIn } },
+        { checkOut: { $gt: checkIn, $lte: checkOut } },
+        { checkIn: { $lte: checkIn }, checkOut: { $gte: checkOut } }
+      ]
     });
 
-    // যদি কোনো একটি তারিখও বুক করা থাকে, তাহলে এরর রেসপন্স পাঠান
     if (existingBooking) {
       return res.status(409).send({ 
-        message: `One or more dates in your selected range are already booked. The first unavailable date is ${existingBooking.date}.` 
+        message: `This room is unavailable for some or all dates in your selected range.` 
       });
     }
 
-    // ২. যদি কোনো তারিখ বুক করা না থাকে, তবে প্রতিটি তারিখের জন্য একটি করে নতুন বুকিং ডকুমেন্ট তৈরি করুন
-    const bookingDocuments = dates.map(date => ({
+    // ২. একটিমাত্র বুকিং ডকুমেন্ট তৈরি করুন
+    const newBooking = {
       roomId,
       email,
-      date,
-      totalPrice, // রেঞ্জের মোট দাম
+      checkIn,
+      checkOut,
+      nights,
+      totalPrice,
       roomName,
       image,
-      price // প্রতি রাতের দাম
-    }));
+      price,
+      createdAt: new Date()
+    };
     
-    // insertMany ব্যবহার করে একসাথে সব ডকুমেন্ট ডেটাবেসে যোগ করুন
-    const result = await bookingsCollection.insertMany(bookingDocuments);
-    res.status(201).send(result);
+    const result = await bookingsCollection.insertOne(newBooking);
+    // ৩. নতুন তৈরি হওয়া বুকিংয়ের ID ক্লায়েন্টকে পাঠান
+    res.status(201).send({ insertedId: result.insertedId });
 
   } catch (error) {
     console.error("Error booking date range:", error);
@@ -191,122 +161,93 @@ app.post("/bookings/range", verifyToken, async (req, res) => {
   }
 });
 
-// Get bookings for a specific user by email 
+// একটি নির্দিষ্ট ব্যবহারকারীর জন্য সব বুকিং আনুন (এখন এটি রেঞ্জ বুকিং আনবে)
 app.get("/bookings", verifyToken, async (req, res) => {
-  const email = req.query.email;
-  if (req.decoded.email !== email) {
-    return res.status(403).send({ message: "Forbidden Access" });
-  }
-  try {
-    const result = await bookingsCollection.find({ email }).toArray();
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch bookings" });
-  }
+  const email = req.query.email;
+  if (req.decoded.email !== email) {
+    return res.status(403).send({ message: "Forbidden Access" });
+  }
+  try {
+    const result = await bookingsCollection.find({ email }).sort({ createdAt: -1 }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch bookings" });
+  }
 });
 
-// Get a single booking by its ID
+// একটিমাত্র বুকিং তার ID দিয়ে আনুন
 app.get("/booking/:id", verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
-    // Check if the ID is a valid MongoDB ObjectId
     if (!ObjectId.isValid(id)) {
       return res.status(400).send({ message: "Invalid booking ID format" });
     }
-
     const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
-
     if (!booking) {
       return res.status(404).send({ message: "Booking not found" });
     }
-
-    // Authorization check: ensure the user requesting the booking is the one who made it
     if (req.decoded.email !== booking.email) {
       return res.status(403).send({ message: "Forbidden Access" });
     }
-
     res.send(booking);
   } catch (error) {
-    console.error("Error fetching single booking:", error);
     res.status(500).send({ error: "Failed to fetch booking details" });
   }
 });
 
-// Retrieve all booked dates for a specific room.
+// ক্যালেন্ডারে নিষ্ক্রিয় তারিখ দেখানোর জন্য আপডেট করা এন্ডপয়েন্ট
 app.get("/bookings/room/:roomId/dates", async (req, res) => {
-  try {
-    const { roomId } = req.params;
-    const bookings = await bookingsCollection
-      .find({ roomId }, { projection: { date: 1, _id: 0 } })
-      .toArray();
-    const dates = bookings.map(b => b.date);
-    res.send(dates);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch booked dates" });
-  }
+  try {
+    const { roomId } = req.params;
+    const bookings = await bookingsCollection.find({ roomId }, { projection: { checkIn: 1, checkOut: 1, _id: 0 } }).toArray();
+    
+    let allBookedDates = [];
+    bookings.forEach(booking => {
+      let currentDate = new Date(booking.checkIn + 'T00:00:00Z');
+      const lastDate = new Date(booking.checkOut + 'T00:00:00Z');
+      
+      // We exclude the last day (check-out day) as it should be available for the next booking
+      while (currentDate < lastDate) {
+        allBookedDates.push(new Date(currentDate));
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+
+    const dateStrings = allBookedDates.map(d => d.toISOString().split('T')[0]);
+    res.send(dateStrings);
+
+  } catch (error) {
+    console.error("Error fetching booked dates:", error);
+    res.status(500).send({ error: "Failed to fetch booked dates" });
+  }
 });
 
-
-// Check if a user has already booked this room.
+// ব্যবহারকারী এই রুমটি আগে বুক করেছে কিনা তা চেক করুন
 app.get("/bookings/check", verifyToken, async (req, res) => {
-  const { roomId, email } = req.query;
-
-  if (req.decoded.email !== email) {
-    return res.status(403).send({ message: "Forbidden Access" });
-  }
-
-  try {
-    const existingBooking = await bookingsCollection.findOne({ roomId, email });
-    res.send({ hasBooked: !!existingBooking }); 
-  } catch (error) {
-    res.status(500).send({ error: "Failed to check booking status" });
-  }
+    const { roomId, email } = req.query;
+    if (req.decoded.email !== email) return res.status(403).send({ message: "Forbidden Access" });
+    try {
+        const existingBooking = await bookingsCollection.findOne({ roomId, email });
+        res.send({ hasBooked: !!existingBooking }); 
+    } catch (error) {
+        res.status(500).send({ error: "Failed to check booking status" });
+    }
 });
 
-
-// Get bookings for a specific room on a specific date
-app.get("/bookings/room/:roomId/date/:date", async (req, res) => {
-  try {
-    const { roomId, date } = req.params;
-    const result = await bookingsCollection.find({ roomId, date }).toArray();
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch room bookings for date" });
-  }
-});
-
-// Get bookings for a specific user by email 
-app.get("/bookings/user/:email", verifyToken, async (req, res) => {
-  const { email } = req.params;
-  if (req.decoded.email !== email) {
-    return res.status(403).send({ message: "Forbidden Access" });
-  }
-  try {
-    const result = await bookingsCollection.find({ email }).toArray();
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch user bookings" });
-  }
-});
-
-
-// Cancel a booking
-app.delete("/bookings/:id", async (req, res) => {
-  const bookingId = req.params.id;
-
-  try {
-    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
+// একটি বুকিং বাতিল করুন
+app.delete("/bookings/:id", verifyToken, async (req, res) => {
+  const bookingId = req.params.id;
+  try {
+    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
     if (result.deletedCount === 1) {
       res.send({ message: "Booking cancelled successfully" });
     } else {
       res.status(404).send({ message: "Booking not found" });
     }
-  } catch (error) {
-    console.error("Error cancelling booking:", error);
-    res.status(500).send({ message: "Server error" });
-  }
+  } catch (error) {
+    res.status(500).send({ message: "Server error" });
+  }
 });
-
 
 // Update booking date
 app.patch("/bookings/:id", verifyToken, async (req, res) => {
