@@ -152,6 +152,45 @@ app.post("/bookings", verifyToken, async (req, res) => {
   }
 });
 
+app.post("/bookings/range", verifyToken, async (req, res) => {
+  try {
+    const { roomId, email, dates, totalPrice, roomName, image, price } = req.body;
+
+    // ১. চেক করুন যে পাঠানো তারিখগুলোর কোনোটি ইতোমধ্যে বুক করা আছে কিনা
+    // $in operator দিয়ে অ্যারের সব তারিখ একসাথে ডেটাবেসে খোঁজা হয়
+    const existingBooking = await bookingsCollection.findOne({
+      roomId: roomId,
+      date: { $in: dates } 
+    });
+
+    // যদি কোনো একটি তারিখও বুক করা থাকে, তাহলে এরর রেসপন্স পাঠান
+    if (existingBooking) {
+      return res.status(409).send({ 
+        message: `One or more dates in your selected range are already booked. The first unavailable date is ${existingBooking.date}.` 
+      });
+    }
+
+    // ২. যদি কোনো তারিখ বুক করা না থাকে, তবে প্রতিটি তারিখের জন্য একটি করে নতুন বুকিং ডকুমেন্ট তৈরি করুন
+    const bookingDocuments = dates.map(date => ({
+      roomId,
+      email,
+      date,
+      totalPrice, // রেঞ্জের মোট দাম
+      roomName,
+      image,
+      price // প্রতি রাতের দাম
+    }));
+    
+    // insertMany ব্যবহার করে একসাথে সব ডকুমেন্ট ডেটাবেসে যোগ করুন
+    const result = await bookingsCollection.insertMany(bookingDocuments);
+    res.status(201).send(result);
+
+  } catch (error) {
+    console.error("Error booking date range:", error);
+    res.status(500).send({ error: "Failed to book the date range." });
+  }
+});
+
 // Get bookings for a specific user by email 
 app.get("/bookings", verifyToken, async (req, res) => {
   const email = req.query.email;
