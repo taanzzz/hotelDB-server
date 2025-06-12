@@ -113,181 +113,184 @@ app.get("/rooms/:id", async (req, res) => {
 
 
 
-// -------------------- Bookings Part --------------------
+// -------------------- Bookings Part --------------------More actions
 
-// Book a room (with duplicate check)
 // Book a room (with duplicate check)
 app.post("/bookings", verifyToken, async (req, res) => {
   try {
     const booking = req.body;
     const { roomId, email, date } = booking;
 
-    // MODIFIED: Check if the user has already booked this room on ANY date.
+    // Verify whether the user has already booked this room for the selected date.
     const existingUserBooking = await bookingsCollection.findOne({
       roomId,
-      email, // We remove the 'date' field from this query
+      email,
+      date,
     });
 
     if (existingUserBooking) {
-      // Send a clear message that they've already booked this room.
-      return res.status(400).send({ message: "You have already booked this room. Please cancel the existing one to book again." });
+      return res.status(400).send({ message: "You already booked this room on this date" });
     }
 
-    // This check remains the same: Check if the room is available on the selected date for ANY user.
+    // Check whether the room has already been booked by another user for the selected date.
     const existingRoomBooking = await bookingsCollection.findOne({
       roomId,
       date,
     });
 
     if (existingRoomBooking) {
-      return res.status(409).send({ message: "Room already booked on this date by someone else" });
+      return res.status(409).send({ message: "Room already booked on this date" });
     }
 
     // Insert booking if all good
     const result = await bookingsCollection.insertOne(booking);
     res.send(result);
   } catch (error) {
-    console.error("Booking Error:", error);
     res.status(500).send({ error: "Failed to book room" });
   }
 });
 
-// Get bookings for a specific user by email
+// Get bookings for a specific user by email 
 app.get("/bookings", verifyToken, async (req, res) => {
-  const email = req.query.email;
-  if (req.decoded.email !== email) {
-    return res.status(403).send({ message: "Forbidden Access" });
-  }
-
-  try {
-    const result = await bookingsCollection.find({ email }).toArray();
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch bookings" });
-  }
+  const email = req.query.email;
+  if (req.decoded.email !== email) {
+    return res.status(403).send({ message: "Forbidden Access" });
+  }
+  try {
+    const result = await bookingsCollection.find({ email }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch bookings" });
+  }
 });
 
-// GET A SINGLE BOOKING BY ID 
-app.get("/bookings/:id", verifyToken, async (req, res) => {
+// Get a single booking by its ID
+app.get("/booking/:id", verifyToken, async (req, res) => {
   try {
-    const id = req.params.id;
+    const { id } = req.params;
+    // Check if the ID is a valid MongoDB ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid booking ID format" });
+    }
+
     const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
 
     if (!booking) {
       return res.status(404).send({ message: "Booking not found" });
     }
 
-    
+    // Authorization check: ensure the user requesting the booking is the one who made it
     if (req.decoded.email !== booking.email) {
       return res.status(403).send({ message: "Forbidden Access" });
     }
-    
+
     res.send(booking);
   } catch (error) {
-    console.error("Error fetching booking by ID:", error);
-    res.status(500).send({ error: "Failed to fetch booking" });
+    console.error("Error fetching single booking:", error);
+    res.status(500).send({ error: "Failed to fetch booking details" });
   }
 });
 
 // Retrieve all booked dates for a specific room.
 app.get("/bookings/room/:roomId/dates", async (req, res) => {
-  try {
-    const { roomId } = req.params;
-    const bookings = await bookingsCollection
-      .find({ roomId }, { projection: { date: 1, _id: 0 } })
-      .toArray();
-    const dates = bookings.map(b => b.date);
-    res.send(dates);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch booked dates" });
-  }
+  try {
+    const { roomId } = req.params;
+    const bookings = await bookingsCollection
+      .find({ roomId }, { projection: { date: 1, _id: 0 } })
+      .toArray();
+    const dates = bookings.map(b => b.date);
+    res.send(dates);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch booked dates" });
+  }
 });
+
 
 // Check if a user has already booked this room.
 app.get("/bookings/check", verifyToken, async (req, res) => {
-  const { roomId, email } = req.query;
+  const { roomId, email } = req.query;
 
-  if (req.decoded.email !== email) {
-    return res.status(403).send({ message: "Forbidden Access" });
-  }
+  if (req.decoded.email !== email) {
+    return res.status(403).send({ message: "Forbidden Access" });
+  }
 
-  try {
-    const existingBooking = await bookingsCollection.findOne({ roomId, email });
-    res.send({ hasBooked: !!existingBooking });
-  } catch (error) {
-    res.status(500).send({ error: "Failed to check booking status" });
-  }
+  try {
+    const existingBooking = await bookingsCollection.findOne({ roomId, email });
+    res.send({ hasBooked: !!existingBooking }); 
+  } catch (error) {
+    res.status(500).send({ error: "Failed to check booking status" });
+  }
 });
+
 
 // Get bookings for a specific room on a specific date
 app.get("/bookings/room/:roomId/date/:date", async (req, res) => {
-  try {
-    const { roomId, date } = req.params;
-    const result = await bookingsCollection.find({ roomId, date }).toArray();
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch room bookings for date" });
-  }
+  try {
+    const { roomId, date } = req.params;
+    const result = await bookingsCollection.find({ roomId, date }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch room bookings for date" });
+  }
 });
 
-// Get bookings for a specific user by email
+// Get bookings for a specific user by email 
 app.get("/bookings/user/:email", verifyToken, async (req, res) => {
-  const { email } = req.params;
-  if (req.decoded.email !== email) {
-    return res.status(403).send({ message: "Forbidden Access" });
-  }
-
-  try {
-    const result = await bookingsCollection.find({ email }).toArray();
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to fetch user bookings" });
-  }
+  const { email } = req.params;
+  if (req.decoded.email !== email) {
+    return res.status(403).send({ message: "Forbidden Access" });
+  }
+  try {
+    const result = await bookingsCollection.find({ email }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch user bookings" });
+  }
 });
+
 
 // Cancel a booking
 app.delete("/bookings/:id", async (req, res) => {
-  const bookingId = req.params.id;
+  const bookingId = req.params.id;
 
-  try {
-    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
+  try {
+    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
     if (result.deletedCount === 1) {
       res.send({ message: "Booking cancelled successfully" });
     } else {
       res.status(404).send({ message: "Booking not found" });
     }
-  } catch (error) {
-    console.error("Error cancelling booking:", error);
-    res.status(500).send({ message: "Server error" });
-  }
+  } catch (error) {
+    console.error("Error cancelling booking:", error);
+    res.status(500).send({ message: "Server error" });
+  }
 });
+
 
 // Update booking date
 app.patch("/bookings/:id", verifyToken, async (req, res) => {
-  const id = req.params.id;
-  const { date } = req.body;
+  const id = req.params.id;
+  const { date } = req.body;
+  try {
+    // Before updating, check if the room is already booked by anyone else on that new date
+    const existingBooking = await bookingsCollection.findOne({
+      roomId: req.body.roomId, 
+      date,
+      _id: { $ne: new ObjectId(id) }, 
+    });
 
-  try {
-    // Before updating, check if the room is already booked by anyone else on that new date
-    const existingBooking = await bookingsCollection.findOne({
-      roomId: req.body.roomId,
-      date,
-      _id: { $ne: new ObjectId(id) },
-    });
+    if (existingBooking) {
+      return res.status(409).send({ message: "Room already booked on this date" });
+    }
 
-    if (existingBooking) {
-      return res.status(409).send({ message: "Room already booked on this date" });
-    }
-
-    const result = await bookingsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { date } }
-    );
-
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to update booking date" });
-  }
+    const result = await bookingsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { date } }
+    );
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: "Failed to update booking date" });
+  }
 });
 
 
