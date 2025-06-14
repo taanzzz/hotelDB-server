@@ -250,20 +250,33 @@ app.get("/bookings/user/:email", verifyToken, async (req, res) => {
 
 
 // Cancel a booking
-app.delete("/bookings/:id", async (req, res) => {
-  const bookingId = req.params.id;
+app.delete("/bookings/:id", verifyToken, async (req, res) => {
+  const bookingId = req.params.id;
+  const userEmail = req.decoded.email; 
 
-  try {
-    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
+  try {
+    
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(bookingId) });
+
+    if (!booking) {
+      return res.status(404).send({ message: "Booking not found" });
+    }
+
+    
+    if (booking.email !== userEmail) {
+      return res.status(403).send({ message: "Forbidden: You are not authorized to cancel this booking." });
+    }
+
+    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
     if (result.deletedCount === 1) {
       res.send({ message: "Booking cancelled successfully" });
     } else {
       res.status(404).send({ message: "Booking not found" });
     }
-  } catch (error) {
-    console.error("Error cancelling booking:", error);
-    res.status(500).send({ message: "Server error" });
-  }
+  } catch (error) {
+    console.error("Error cancelling booking:", error);
+    res.status(500).send({ message: "Server error" });
+  }
 });
 
 
