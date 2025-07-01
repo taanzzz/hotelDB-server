@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const jwt = require("jsonwebtoken");
+const jwt =require("jsonwebtoken");
 const { MongoClient, ObjectId, ServerApiVersion } = require("mongodb");
 require("dotenv").config();
 
@@ -12,57 +12,122 @@ app.use(express.json());
 
 // MongoDB Connection
 const client = new MongoClient(process.env.MONGODB_URI, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
 });
 
 let roomsCollection;
 let bookingsCollection;
 let reviewsCollection;
+let usersCollection; // নতুন usersCollection যোগ করা হলো
 
 async function run() {
-  try {
-    const db = client.db("HotelDB");
-    roomsCollection = db.collection("rooms");
-    bookingsCollection = db.collection("bookings");
-    reviewsCollection = db.collection("reviews");
+  try {
+    const db = client.db("HotelDB");
+    roomsCollection = db.collection("rooms");
+    bookingsCollection = db.collection("bookings");
+    reviewsCollection = db.collection("reviews");
+    usersCollection = db.collection("users"); // ইনিশিয়ালাইজ করা হলো
 
-    console.log("✅ MongoDB Ready");
-  } catch (err) {
-    console.error("❌ MongoDB error:", err);
-  }
+    console.log("✅ MongoDB Ready");
+  } catch (err) {
+    console.error("❌ MongoDB error:", err);
+  }
 }
 run();
 
-// JWT Token Endpoint
-app.post("/jwt", (req, res) => {
-  const user = req.body;
-  const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: "1d" });
-  res.send({ token });
-});
-
-// JWT Middleware
-function verifyToken(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).send({ message: "Unauthorized" });
-  }
-
-  const token = authHeader.split(" ")[1];
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).send({ message: "Forbidden" });
-    }
-    req.decoded = decoded;
-    next();
-  });
+// --- নতুন: verifyAdmin মিডলওয়্যার ---
+const verifyAdmin = async (req, res, next) => {
+  const email = req.decoded.email;
+  const query = { email: email };
+  const user = await usersCollection.findOne(query);
+  if (user?.role !== 'admin') {
+    return res.status(403).send({ message: 'Forbidden Access' });
+  }
+  next();
 }
 
-// -------------------- Rooms Part --------------------
 
+// --- পরিবর্তিত JWT Token Endpoint ---
+app.post("/jwt", async (req, res) => {
+  const userInfo = req.body;
+  const email = userInfo.email;
+
+  // ব্যবহারকারী ডাটাবেসে আছে কিনা চেক করুন
+  const existingUser = await usersCollection.findOne({ email: email });
+
+  if (!existingUser) {
+    // যদি না থাকে, নতুন ব্যবহারকারী হিসেবে 'user' রোলে সেভ করুন
+    const newUser = {
+      email: email,
+      name: userInfo.name || 'N/A', // গুগল সাইন ইন থেকে নাম আসতে পারে
+      photoURL: userInfo.photoURL || 'N/A',
+      role: 'user' // ডিফল্ট রোল
+    };
+    await usersCollection.insertOne(newUser);
+  }
+  
+  // ব্যবহারকারীর তথ্যসহ নতুন টোকেন তৈরি করুন
+  const userForToken = await usersCollection.findOne({ email: email });
+  const token = jwt.sign({ email: userForToken.email, role: userForToken.role }, process.env.JWT_SECRET, { expiresIn: "1d" });
+  
+  res.send({ token });
+});
+
+
+// JWT Middleware (Unchanged)
+function verifyToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: "Forbidden" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+}
+
+// -------------------- Users Part (নতুন) --------------------
+// Get user data by email
+app.get('/users/:email', verifyToken, async (req, res) => {
+    const email = req.params.email;
+    if (req.decoded.email !== email) {
+        return res.status(403).send({ message: "Forbidden Access" });
+    }
+    const result = await usersCollection.findOne({ email });
+    res.send(result);
+});
+
+// Get all users (Admin Only)
+app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
+    const result = await usersCollection.find().toArray();
+    res.send(result);
+});
+
+// Make a user admin (Admin Only)
+app.patch('/users/admin/:id', verifyToken, verifyAdmin, async(req, res) => {
+    const id = req.params.id;
+    const filter = { _id: new ObjectId(id) };
+    const updatedDoc = {
+        $set: {
+            role: 'admin'
+        }
+    };
+    const result = await usersCollection.updateOne(filter, updatedDoc);
+    res.send(result);
+});
+
+
+// -------------------- Rooms Part (Unchanged) --------------------
+// ... আপনার বাকি কোড এখানে অপরিবর্তিত থাকবে ...
 // Get all rooms (with price range filter)
 app.get('/rooms', async (req, res) => {
   try {
@@ -166,29 +231,29 @@ app.get("/bookings", verifyToken, async (req, res) => {
 
 // Get a single booking by its ID
 app.get("/booking/:id", verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    // Check if the ID is a valid MongoDB ObjectId
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).send({ message: "Invalid booking ID format" });
-    }
+  try {
+    const { id } = req.params;
+    // Check if the ID is a valid MongoDB ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid booking ID format" });
+    }
 
-    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
 
-    if (!booking) {
-      return res.status(404).send({ message: "Booking not found" });
-    }
+    if (!booking) {
+      return res.status(404).send({ message: "Booking not found" });
+    }
 
-    // Authorization check: ensure the user requesting the booking is the one who made it
-    if (req.decoded.email !== booking.email) {
-      return res.status(403).send({ message: "Forbidden Access" });
-    }
+    // Authorization check: ensure the user requesting the booking is the one who made it
+    if (req.decoded.email !== booking.email) {
+      return res.status(403).send({ message: "Forbidden Access" });
+    }
 
-    res.send(booking);
-  } catch (error) {
-    console.error("Error fetching single booking:", error);
-    res.status(500).send({ error: "Failed to fetch booking details" });
-  }
+    res.send(booking);
+  } catch (error) {
+    console.error("Error fetching single booking:", error);
+    res.status(500).send({ error: "Failed to fetch booking details" });
+  }
 });
 
 // Retrieve all booked dates for a specific room.
@@ -251,32 +316,32 @@ app.get("/bookings/user/:email", verifyToken, async (req, res) => {
 
 // Cancel a booking
 app.delete("/bookings/:id", verifyToken, async (req, res) => {
-  const bookingId = req.params.id;
-  const userEmail = req.decoded.email; 
+  const bookingId = req.params.id;
+  const userEmail = req.decoded.email; 
 
-  try {
-    
-    const booking = await bookingsCollection.findOne({ _id: new ObjectId(bookingId) });
+  try {
+    
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(bookingId) });
 
-    if (!booking) {
-      return res.status(404).send({ message: "Booking not found" });
-    }
+    if (!booking) {
+      return res.status(404).send({ message: "Booking not found" });
+    }
 
-    
-    if (booking.email !== userEmail) {
-      return res.status(403).send({ message: "Forbidden: You are not authorized to cancel this booking." });
-    }
+    
+    if (booking.email !== userEmail) {
+      return res.status(403).send({ message: "Forbidden: You are not authorized to cancel this booking." });
+    }
 
-    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
-    if (result.deletedCount === 1) {
-      res.send({ message: "Booking cancelled successfully" });
-    } else {
-      res.status(404).send({ message: "Booking not found" });
-    }
-  } catch (error) {
-    console.error("Error cancelling booking:", error);
-    res.status(500).send({ message: "Server error" });
-  }
+    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(bookingId) });
+    if (result.deletedCount === 1) {
+      res.send({ message: "Booking cancelled successfully" });
+    } else {
+      res.status(404).send({ message: "Booking not found" });
+    }
+  } catch (error) {
+    console.error("Error cancelling booking:", error);
+    res.status(500).send({ message: "Server error" });
+  }
 });
 
 
@@ -354,17 +419,18 @@ app.get("/reviews/:roomId", async (req, res) => {
   }
 });
 
+
 // -------------------- Root --------------------
 app.get("/", (req, res) => {
-  res.send("🏨 Hotel Booking Server is Running");
+  res.send("🏨 Hotel Booking Server is Running");
 });
 
 // Local server for development
 if (process.env.NODE_ENV !== "production") {
-  const port = process.env.PORT || 3000;
-  app.listen(port, () => {
-    console.log(`🚀 Server running at http://localhost:${port}`);
-  });
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`🚀 Server running at http://localhost:${port}`);
+  });
 }
 
 // Export for Vercel
