@@ -125,7 +125,7 @@ app.patch('/users/admin/:id', verifyToken, verifyAdmin, async(req, res) => {
     res.send(result);
 });
 
-// -------------------- Admin Stats Part (নতুন) --------------------
+// -------------------- Admin Stats Part (পরিবর্তিত) --------------------
 // Get all stats (Admin Only)
 app.get('/admin/stats', verifyToken, verifyAdmin, async (req, res) => {
     try {
@@ -133,14 +133,10 @@ app.get('/admin/stats', verifyToken, verifyAdmin, async (req, res) => {
         const roomsCount = await roomsCollection.estimatedDocumentCount();
         const bookingsCount = await bookingsCollection.estimatedDocumentCount();
 
-        // মোট আয় গণনা করার জন্য অ্যাগ্রিগেশন পাইপলাইন
         const revenueResult = await bookingsCollection.aggregate([
             {
                 $lookup: {
                     from: 'rooms',
-                    localField: 'roomId',
-                    foreignField: '_id',
-                    // MongoDB ObjectId-এর সাথে স্ট্রিং মেলানোর জন্য পাইপলাইন
                     let: { booking_roomId_str: "$roomId" },
                     pipeline: [
                         { $addFields: { "string_id": { "$toString": "$_id" } } },
@@ -149,9 +145,7 @@ app.get('/admin/stats', verifyToken, verifyAdmin, async (req, res) => {
                     as: 'roomDetails'
                 }
             },
-            {
-                $unwind: '$roomDetails'
-            },
+            { $unwind: '$roomDetails' },
             {
                 $group: {
                     _id: null,
@@ -159,22 +153,37 @@ app.get('/admin/stats', verifyToken, verifyAdmin, async (req, res) => {
                 }
             }
         ]).toArray();
-
         const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
         
-        // সাম্প্রতিক ৫টি বুকিং এর তালিকা
-        const recentBookings = await bookingsCollection.find()
-            .sort({ bookingDate: -1 }) // আপনার বুকিং স্কিমাতে বুকিং এর তারিখ অনুযায়ী সর্ট করুন
-            .limit(5)
-            .toArray();
-
+        // --- সাম্প্রতিক বুকিং এর তালিকা (ব্যবহারকারীর ছবিসহ) ---
+        const recentBookings = await bookingsCollection.aggregate([
+            { $sort: { createdAt: -1 } }, // আপনার বুকিং স্কিমাতে বুকিং তৈরির তারিখ অনুযায়ী সর্ট করুন
+            { $limit: 5 },
+            {
+                $lookup: {
+                    from: 'users', // users কালেকশনের সাথে জয়েন করুন
+                    localField: 'email', // bookings কালেকশনের 'email' ফিল্ড
+                    foreignField: 'email', // users কালেকশনের 'email' ফিল্ড
+                    as: 'userDetails' // নতুন অ্যারের নাম
+                }
+            },
+            { $unwind: '$userDetails' }, // অ্যারে থেকে অবজেক্টে রূপান্তর
+            {
+                $project: { // প্রয়োজনীয় ফিল্ডগুলো নির্বাচন করুন
+                    _id: 1,
+                    email: 1,
+                    date: 1,
+                    userPhoto: '$userDetails.photoURL' // ব্যবহারকারীর ছবি যোগ করুন
+                }
+            }
+        ]).toArray();
 
         res.send({
             users: usersCount,
             rooms: roomsCount,
             bookings: bookingsCount,
             revenue: totalRevenue,
-            recentBookings
+            recentBookings // ছবিসহ নতুন ডেটা পাঠান
         });
 
     } catch (error) {
