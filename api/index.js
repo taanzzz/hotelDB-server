@@ -106,6 +106,62 @@ app.get('/users/:email', verifyToken, async (req, res) => {
     res.send(result);
 });
 
+// -------------------- User Stats Part (নতুন) --------------------
+// Get stats for a specific user (Protected by JWT)
+app.get('/user/stats/:email', verifyToken, async (req, res) => {
+    try {
+        const userEmail = req.params.email;
+
+        // টোকেনের ইমেইলের সাথে রিকোয়েস্টের ইমেইল মিলিয়ে দেখা
+        if (req.decoded.email !== userEmail) {
+            return res.status(403).send({ message: "Forbidden Access" });
+        }
+
+        const query = { email: userEmail };
+
+        // মোট বুকিং গণনা
+        const totalBookings = await bookingsCollection.countDocuments(query);
+        
+        // মোট রিভিউ গণনা
+        const totalReviews = await reviewsCollection.countDocuments({ userEmail: userEmail });
+
+        // মোট খরচ গণনা
+        const spendingResult = await bookingsCollection.aggregate([
+            { $match: query }, // নির্দিষ্ট ইউজারের বুকিং ফিল্টার করা
+            {
+                $lookup: {
+                    from: 'rooms',
+                    let: { booking_roomId_str: "$roomId" },
+                    pipeline: [
+                        { $addFields: { "string_id": { "$toString": "$_id" } } },
+                        { $match: { $expr: { "$eq": ["$string_id", "$$booking_roomId_str"] } } }
+                    ],
+                    as: 'roomDetails'
+                }
+            },
+            { $unwind: '$roomDetails' },
+            {
+                $group: {
+                    _id: null,
+                    totalSpent: { $sum: '$roomDetails.price' }
+                }
+            }
+        ]).toArray();
+
+        const totalSpent = spendingResult.length > 0 ? spendingResult[0].totalSpent : 0;
+
+        res.send({
+            totalBookings,
+            totalReviews,
+            totalSpent
+        });
+
+    } catch (error) {
+        console.error("Error fetching user stats:", error);
+        res.status(500).send({ message: 'Failed to fetch user statistics' });
+    }
+});
+
 // Get all users (Admin Only)
 app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
     const result = await usersCollection.find().toArray();
