@@ -162,55 +162,25 @@ app.get('/user/stats/:email', verifyToken, async (req, res) => {
     }
 });
 
-// ####################################################################
-// ### --- এই API এন্ডপয়েন্টটি আপনার কোডে যোগ করুন --- ###
-// ####################################################################
-// User Booking Summary API (চূড়ান্ত সঠিক ভার্সন)
+// *** এই সেই API যা চার্টের জন্য দরকার ***
 app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
     try {
         const userEmail = req.params.email;
-        if (req.decoded.email !== userEmail) {
-            return res.status(403).send({ message: "Forbidden Access" });
-        }
+        if (req.decoded.email !== userEmail) return res.status(403).send({ message: "Forbidden" });
 
         const summary = await bookingsCollection.aggregate([
             { $match: { email: userEmail } },
-            {
-                // পরিবর্তনটি এখানে করা হয়েছে
-                $lookup: {
-                    from: 'rooms',
-                    // let ভ্যারিয়েবল ব্যবহার করে roomId-কে ObjectId-তে রূপান্তর করা হচ্ছে
-                    let: { roomIdObj: { $toObjectId: '$roomId' } },
-                    pipeline: [
-                        // এখন সরাসরি $_id এবং রূপান্তরিত roomIdObj-এর মধ্যে মিল খোঁজা হচ্ছে
-                        { $match: { $expr: { $eq: ['$_id', '$$roomIdObj'] } } }
-                    ],
-                    as: 'roomDetails'
-                }
-            },
+            { $lookup: { from: 'rooms', let: { roomIdObj: { $toObjectId: '$roomId' } }, pipeline: [{ $match: { $expr: { $eq: ['$_id', '$$roomIdObj'] } } }], as: 'roomDetails' }},
             { $unwind: '$roomDetails' },
-            {
-                $group: {
-                    _id: '$roomDetails.roomName',
-                    value: { $sum: '$roomDetails.price' }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    name: '$_id',
-                    value: 1
-                }
-            }
+            { $group: { _id: '$roomDetails.roomName', value: { $sum: '$roomDetails.price' } }},
+            { $project: { _id: 0, name: '$_id', value: 1 }}
         ]).toArray();
-        
         res.send(summary);
-
     } catch (error) {
-        console.error("Error fetching booking summary:", error);
         res.status(500).send({ message: 'Failed to fetch booking summary' });
     }
 });
+
 
 // -------------------- User Recent Activity Part (নতুন) --------------------
 // Get recent bookings for a specific user
@@ -283,50 +253,6 @@ app.patch('/user/profile', verifyToken, async (req, res) => {
         res.status(500).send({ message: 'Failed to update profile' });
     }
 });
-
-// -------------------- User Booking Summary API (নতুন) --------------------
-// Get booking summary for a specific user for chart
-app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
-    try {
-        const userEmail = req.params.email;
-        if (req.decoded.email !== userEmail) {
-            return res.status(403).send({ message: "Forbidden Access" });
-        }
-        const summary = await bookingsCollection.aggregate([
-            { $match: { email: userEmail } },
-            {
-                $lookup: {
-                    from: 'rooms',
-                    let: { booking_roomId_str: "$roomId" },
-                    pipeline: [
-                        { $addFields: { "string_id": { "$toString": "$_id" } } },
-                        { $match: { $expr: { "$eq": ["$string_id", "$$booking_roomId_str"] } } }
-                    ],
-                    as: 'roomDetails'
-                }
-            },
-            { $unwind: '$roomDetails' },
-            {
-                $group: {
-                    _id: '$roomDetails.roomName',
-                    value: { $sum: '$roomDetails.price' }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    name: '$_id',
-                    value: 1
-                }
-            }
-        ]).toArray();
-        res.send(summary);
-    } catch (error) {
-        console.error("Error fetching booking summary:", error);
-        res.status(500).send({ message: 'Failed to fetch booking summary' });
-    }
-});
-
 
 // Get all users (Admin Only)
 app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
