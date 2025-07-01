@@ -125,6 +125,63 @@ app.patch('/users/admin/:id', verifyToken, verifyAdmin, async(req, res) => {
     res.send(result);
 });
 
+// -------------------- Admin Stats Part (নতুন) --------------------
+// Get all stats (Admin Only)
+app.get('/admin/stats', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const usersCount = await usersCollection.estimatedDocumentCount();
+        const roomsCount = await roomsCollection.estimatedDocumentCount();
+        const bookingsCount = await bookingsCollection.estimatedDocumentCount();
+
+        // মোট আয় গণনা করার জন্য অ্যাগ্রিগেশন পাইপলাইন
+        const revenueResult = await bookingsCollection.aggregate([
+            {
+                $lookup: {
+                    from: 'rooms',
+                    localField: 'roomId',
+                    foreignField: '_id',
+                    // MongoDB ObjectId-এর সাথে স্ট্রিং মেলানোর জন্য পাইপলাইন
+                    let: { booking_roomId_str: "$roomId" },
+                    pipeline: [
+                        { $addFields: { "string_id": { "$toString": "$_id" } } },
+                        { $match: { $expr: { "$eq": ["$string_id", "$$booking_roomId_str"] } } }
+                    ],
+                    as: 'roomDetails'
+                }
+            },
+            {
+                $unwind: '$roomDetails'
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalRevenue: { $sum: '$roomDetails.price' }
+                }
+            }
+        ]).toArray();
+
+        const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+        
+        // সাম্প্রতিক ৫টি বুকিং এর তালিকা
+        const recentBookings = await bookingsCollection.find()
+            .sort({ bookingDate: -1 }) // আপনার বুকিং স্কিমাতে বুকিং এর তারিখ অনুযায়ী সর্ট করুন
+            .limit(5)
+            .toArray();
+
+
+        res.send({
+            users: usersCount,
+            rooms: roomsCount,
+            bookings: bookingsCount,
+            revenue: totalRevenue,
+            recentBookings
+        });
+
+    } catch (error) {
+        console.error("Error fetching admin stats:", error);
+        res.status(500).send({ message: 'Failed to fetch admin statistics' });
+    }
+});
 
 // -------------------- Rooms Part (Unchanged) --------------------
 // ... আপনার বাকি কোড এখানে অপরিবর্তিত থাকবে ...
