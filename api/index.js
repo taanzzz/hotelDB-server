@@ -171,14 +171,14 @@ app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
             return res.status(403).send({ message: "Forbidden Access" });
         }
 
-        console.log(`\n--- Debugging /user/booking-summary for: ${userEmail} ---`);
+        
 
         // ধাপ ১: ব্যবহারকারীর বুকিংগুলো খুঁজে বের করা
         const userBookings = await bookingsCollection.find({ email: userEmail }).toArray();
-        console.log("\n[Step 1 - Match] User's bookings found:", userBookings);
+        
 
         if (userBookings.length === 0) {
-            console.log("--> No bookings found for this user. Sending empty array.");
+        
             return res.send([]);
         }
 
@@ -215,8 +215,7 @@ app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
             }
         ]).toArray();
         
-        console.log("\n[Step 2 - Lookup Result] Data after trying to join with rooms collection:");
-        console.log(JSON.stringify(summary, null, 2));
+        
 
 
         // ধাপ ৩: চূড়ান্ত ফলাফল তৈরি
@@ -224,17 +223,16 @@ app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
             { $match: { email: userEmail } },
             { $lookup: { from: 'rooms', let: { roomIdObj: { $toObjectId: '$roomId' } }, pipeline: [ { $match: { $expr: { $eq: ['$_id', '$$roomIdObj'] } } } ], as: 'roomDetails' } },
             { $unwind: '$roomDetails' },
-            { $group: { _id: '$roomDetails.roomName', value: { $sum: '$roomDetails.price' } } },
+            { $group: { _id: '$roomDetails.name', value: { $sum: '$roomDetails.price' } } },
             { $project: { _id: 0, name: '$_id', value: 1 } }
         ]).toArray();
 
-        console.log("\n[Step 3 - Final Result] Data being sent to frontend:", finalResult);
-        console.log("---------------------------------------------------\n");
+        
         
         res.send(finalResult);
 
     } catch (error) {
-        console.error("Error in /user/booking-summary:", error);
+        
         res.status(500).send({ message: 'Failed to fetch booking summary' });
     }
 });
