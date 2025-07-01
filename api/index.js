@@ -251,27 +251,38 @@ app.delete('/admin/users/:id', verifyToken, verifyAdmin, async (req, res) => {
 // -------------------- Rooms Part (Unchanged) --------------------
 // ... আপনার বাকি কোড এখানে অপরিবর্তিত থাকবে ...
 // Get all rooms (with price range filter)
+// GET all rooms (ফিল্টারিং এবং পেজিনেশনসহ সম্মিলিত ভার্সন)
 app.get('/rooms', async (req, res) => {
-  try {
-    const { minPrice, maxPrice } = req.query;
+    try {
+        // দাম অনুযায়ী ফিল্টারিং এর জন্য
+        const { minPrice, maxPrice } = req.query;
+        let query = {};
+        if (minPrice && maxPrice) {
+            query.price = {
+                $gte: parseFloat(minPrice),
+                $lte: parseFloat(maxPrice)
+            };
+        }
 
-    let query = {};
+        // পেজিনেশন এর জন্য
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10; // ডিফল্ট ১০টি, অ্যাডমিন প্যানেলে ৫টি করে আসবে
+        const skip = (page - 1) * limit;
 
-    if (minPrice && maxPrice) {
-      query.price = {
-        $gte: parseFloat(minPrice),
-        $lte: parseFloat(maxPrice)
-      };
-    }
+        const rooms = await roomsCollection.find(query).skip(skip).limit(limit).toArray();
+        const totalRooms = await roomsCollection.countDocuments(query);
+        
+        res.send({
+            rooms,
+            totalRooms,
+            totalPages: Math.ceil(totalRooms / limit)
+        });
 
-    const rooms = await roomsCollection.find(query).toArray();
-    res.send(rooms);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ error: 'Internal server error' });
-  }
+    } catch (err) {
+        console.error(err);
+        res.status(500).send({ error: 'Internal server error' });
+    }
 });
-
 // Get Top 6 Rooms by Rating
 app.get("/rooms/featured/top-rated", async (req, res) => {
   try {
@@ -298,6 +309,43 @@ app.get("/rooms/:id", async (req, res) => {
   }
 });
 
+// POST a new room (নতুন - Admin Only)
+app.post('/rooms', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const roomData = req.body;
+        const result = await roomsCollection.insertOne(roomData);
+        res.send(result);
+    } catch (error) {
+        res.status(500).send({ message: 'Failed to create room' });
+    }
+});
+
+// PATCH/update a room (নতুন - Admin Only)
+app.patch('/rooms/:id', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const updatedData = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+            $set: updatedData
+        };
+        const result = await roomsCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+    } catch (error) {
+        res.status(500).send({ message: 'Failed to update room' });
+    }
+});
+
+// DELETE a room (নতুন - Admin Only)
+app.delete('/rooms/:id', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const result = await roomsCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send(result);
+    } catch (error) {
+        res.status(500).send({ message: 'Failed to delete room' });
+    }
+});
 
 
 // -------------------- Bookings Part --------------------More actions
