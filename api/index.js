@@ -192,6 +192,62 @@ app.get('/admin/stats', verifyToken, verifyAdmin, async (req, res) => {
     }
 });
 
+// -------------------- Manage Users Part (Admin Only) --------------------
+
+// 1. সকল ব্যবহারকারীকে পেজিনেশনসহ পাওয়ার জন্য API
+app.get('/admin/users', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const users = await usersCollection.find().skip(skip).limit(limit).toArray();
+        const totalUsers = await usersCollection.countDocuments();
+
+        res.send({
+            users,
+            totalUsers,
+            totalPages: Math.ceil(totalUsers / limit),
+            currentPage: page
+        });
+    } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch users' });
+    }
+});
+
+// 2. ব্যবহারকারীর রোল পরিবর্তন করার জন্য API
+app.patch('/admin/users/role/:id', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const { role } = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+            $set: { role: role }
+        };
+        const result = await usersCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+    } catch (error) {
+        res.status(500).send({ message: 'Failed to update user role' });
+    }
+});
+
+// 3. ব্যবহারকারী ডিলেট করার জন্য API
+app.delete('/admin/users/:id', verifyToken, verifyAdmin, async (req, res) => {
+    try {
+        const id = req.params.id;
+        // অ্যাডমিন নিজেকে ডিলেট করতে পারবে না
+        const userToDelete = await usersCollection.findOne({ _id: new ObjectId(id) });
+        if (userToDelete.email === req.decoded.email) {
+            return res.status(400).send({ message: "Admin cannot delete themselves." });
+        }
+        
+        const result = await usersCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send(result);
+    } catch (error) {
+        res.status(500).send({ message: 'Failed to delete user' });
+    }
+});
+
 // -------------------- Rooms Part (Unchanged) --------------------
 // ... আপনার বাকি কোড এখানে অপরিবর্তিত থাকবে ...
 // Get all rooms (with price range filter)
