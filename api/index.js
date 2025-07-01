@@ -165,21 +165,25 @@ app.get('/user/stats/:email', verifyToken, async (req, res) => {
 // ####################################################################
 // ### --- এই API এন্ডপয়েন্টটি আপনার কোডে যোগ করুন --- ###
 // ####################################################################
+// User Booking Summary API (চূড়ান্ত সঠিক ভার্সন)
 app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
     try {
         const userEmail = req.params.email;
         if (req.decoded.email !== userEmail) {
             return res.status(403).send({ message: "Forbidden Access" });
         }
+
         const summary = await bookingsCollection.aggregate([
             { $match: { email: userEmail } },
             {
+                // পরিবর্তনটি এখানে করা হয়েছে
                 $lookup: {
                     from: 'rooms',
-                    let: { booking_roomId_str: "$roomId" },
+                    // let ভ্যারিয়েবল ব্যবহার করে roomId-কে ObjectId-তে রূপান্তর করা হচ্ছে
+                    let: { roomIdObj: { $toObjectId: '$roomId' } },
                     pipeline: [
-                        { $addFields: { "string_id": { "$toString": "$_id" } } },
-                        { $match: { $expr: { "$eq": ["$string_id", "$$booking_roomId_str"] } } }
+                        // এখন সরাসরি $_id এবং রূপান্তরিত roomIdObj-এর মধ্যে মিল খোঁজা হচ্ছে
+                        { $match: { $expr: { $eq: ['$_id', '$$roomIdObj'] } } }
                     ],
                     as: 'roomDetails'
                 }
@@ -199,7 +203,9 @@ app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
                 }
             }
         ]).toArray();
+        
         res.send(summary);
+
     } catch (error) {
         console.error("Error fetching booking summary:", error);
         res.status(500).send({ message: 'Failed to fetch booking summary' });
