@@ -242,7 +242,6 @@ app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
         if (req.decoded.email !== userEmail) {
             return res.status(403).send({ message: "Forbidden Access" });
         }
-
         const summary = await bookingsCollection.aggregate([
             { $match: { email: userEmail } },
             {
@@ -259,25 +258,25 @@ app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
             { $unwind: '$roomDetails' },
             {
                 $group: {
-                    _id: '$roomDetails.roomName', // রুমের নাম অনুযায়ী গ্রুপ করা
-                    value: { $sum: '$roomDetails.price' } // প্রতিটি রুমে মোট খরচ
+                    _id: '$roomDetails.roomName',
+                    value: { $sum: '$roomDetails.price' }
                 }
             },
             {
                 $project: {
                     _id: 0,
-                    name: '$_id', // ফিল্ডের নাম পরিবর্তন করে 'name' করা
+                    name: '$_id',
                     value: 1
                 }
             }
         ]).toArray();
-        
         res.send(summary);
-
     } catch (error) {
+        console.error("Error fetching booking summary:", error);
         res.status(500).send({ message: 'Failed to fetch booking summary' });
     }
 });
+
 
 // Get all users (Admin Only)
 app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
