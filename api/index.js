@@ -206,6 +206,34 @@ app.get('/user/recent-bookings/:email', verifyToken, async (req, res) => {
     }
 });
 
+// -------------------- User Profile Update Part (নতুন) --------------------
+// Update user profile info in MongoDB
+app.patch('/user/profile', verifyToken, async (req, res) => {
+    try {
+        const { email, name, photoURL } = req.body;
+
+        // সিকিউরিটি চেক: টোকেনের ইমেইল এবং রিকোয়েস্টের ইমেইল এক কিনা
+        if (req.decoded.email !== email) {
+            return res.status(403).send({ message: "Forbidden Access" });
+        }
+
+        const filter = { email: email };
+        const updatedDoc = {
+            $set: {
+                name: name,
+                photoURL: photoURL
+            }
+        };
+
+        const result = await usersCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+
+    } catch (error) {
+        console.error("Error updating user profile:", error);
+        res.status(500).send({ message: 'Failed to update profile' });
+    }
+});
+
 // Get all users (Admin Only)
 app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
     const result = await usersCollection.find().toArray();
