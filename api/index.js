@@ -234,6 +234,51 @@ app.patch('/user/profile', verifyToken, async (req, res) => {
     }
 });
 
+// -------------------- User Booking Summary API (নতুন) --------------------
+// Get booking summary for a specific user for chart
+app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
+    try {
+        const userEmail = req.params.email;
+        if (req.decoded.email !== userEmail) {
+            return res.status(403).send({ message: "Forbidden Access" });
+        }
+
+        const summary = await bookingsCollection.aggregate([
+            { $match: { email: userEmail } },
+            {
+                $lookup: {
+                    from: 'rooms',
+                    let: { booking_roomId_str: "$roomId" },
+                    pipeline: [
+                        { $addFields: { "string_id": { "$toString": "$_id" } } },
+                        { $match: { $expr: { "$eq": ["$string_id", "$$booking_roomId_str"] } } }
+                    ],
+                    as: 'roomDetails'
+                }
+            },
+            { $unwind: '$roomDetails' },
+            {
+                $group: {
+                    _id: '$roomDetails.roomName', // রুমের নাম অনুযায়ী গ্রুপ করা
+                    value: { $sum: '$roomDetails.price' } // প্রতিটি রুমে মোট খরচ
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    name: '$_id', // ফিল্ডের নাম পরিবর্তন করে 'name' করা
+                    value: 1
+                }
+            }
+        ]).toArray();
+        
+        res.send(summary);
+
+    } catch (error) {
+        res.status(500).send({ message: 'Failed to fetch booking summary' });
+    }
+});
+
 // Get all users (Admin Only)
 app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
     const result = await usersCollection.find().toArray();
