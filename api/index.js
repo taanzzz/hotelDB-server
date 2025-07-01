@@ -162,6 +162,50 @@ app.get('/user/stats/:email', verifyToken, async (req, res) => {
     }
 });
 
+// ####################################################################
+// ### --- এই API এন্ডপয়েন্টটি আপনার কোডে যোগ করুন --- ###
+// ####################################################################
+app.get('/user/booking-summary/:email', verifyToken, async (req, res) => {
+    try {
+        const userEmail = req.params.email;
+        if (req.decoded.email !== userEmail) {
+            return res.status(403).send({ message: "Forbidden Access" });
+        }
+        const summary = await bookingsCollection.aggregate([
+            { $match: { email: userEmail } },
+            {
+                $lookup: {
+                    from: 'rooms',
+                    let: { booking_roomId_str: "$roomId" },
+                    pipeline: [
+                        { $addFields: { "string_id": { "$toString": "$_id" } } },
+                        { $match: { $expr: { "$eq": ["$string_id", "$$booking_roomId_str"] } } }
+                    ],
+                    as: 'roomDetails'
+                }
+            },
+            { $unwind: '$roomDetails' },
+            {
+                $group: {
+                    _id: '$roomDetails.roomName',
+                    value: { $sum: '$roomDetails.price' }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    name: '$_id',
+                    value: 1
+                }
+            }
+        ]).toArray();
+        res.send(summary);
+    } catch (error) {
+        console.error("Error fetching booking summary:", error);
+        res.status(500).send({ message: 'Failed to fetch booking summary' });
+    }
+});
+
 // -------------------- User Recent Activity Part (নতুন) --------------------
 // Get recent bookings for a specific user
 app.get('/user/recent-bookings/:email', verifyToken, async (req, res) => {
