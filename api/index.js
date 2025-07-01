@@ -162,6 +162,50 @@ app.get('/user/stats/:email', verifyToken, async (req, res) => {
     }
 });
 
+// -------------------- User Recent Activity Part (নতুন) --------------------
+// Get recent bookings for a specific user
+app.get('/user/recent-bookings/:email', verifyToken, async (req, res) => {
+    try {
+        const userEmail = req.params.email;
+        if (req.decoded.email !== userEmail) {
+            return res.status(403).send({ message: "Forbidden Access" });
+        }
+
+        const recentBookings = await bookingsCollection.aggregate([
+            { $match: { email: userEmail } },
+            { $sort: { createdAt: -1 } },
+            { $limit: 4 }, // সর্বশেষ ৪টি বুকিং দেখানো হবে
+            {
+                $lookup: {
+                    from: 'rooms',
+                    let: { booking_roomId_str: "$roomId" },
+                    pipeline: [
+                        { $addFields: { "string_id": { "$toString": "$_id" } } },
+                        { $match: { $expr: { "$eq": ["$string_id", "$$booking_roomId_str"] } } }
+                    ],
+                    as: 'roomDetails'
+                }
+            },
+            { $unwind: '$roomDetails' },
+            {
+                $project: {
+                    _id: 1,
+                    date: 1,
+                    roomId: '$roomDetails._id',
+                    roomName: '$roomDetails.roomName',
+                    roomImage: '$roomDetails.image'
+                }
+            }
+        ]).toArray();
+
+        res.send(recentBookings);
+
+    } catch (error) {
+        console.error("Error fetching recent bookings:", error);
+        res.status(500).send({ message: 'Failed to fetch recent bookings' });
+    }
+});
+
 // Get all users (Admin Only)
 app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
     const result = await usersCollection.find().toArray();
