@@ -248,37 +248,36 @@ app.get("/rooms/:id", async (req, res) => {
 
 // Book a room (with duplicate check)
 app.post("/bookings", verifyToken, async (req, res) => {
-  try {
-    const booking = req.body;
-    const { roomId, email, date } = booking;
+  try {
+    // ১. আপনি আগের মতোই ফ্রন্টএন্ড থেকে আসা ডেটা 'booking' ভ্যারিয়েবলে রাখছেন
+    const booking = req.body;
+    const { roomId, email, date } = booking;
 
-    // Verify whether the user has already booked this room for the selected date.
-    const existingUserBooking = await bookingsCollection.findOne({
-      roomId,
-      email,
-      date,
-    });
+    // ২. আপনার দুটি ভ্যালিডেশন বা নিরাপত্তা চেক আগের মতোই কাজ করবে
+    // কারণ এগুলো শুধু roomId, email, এবং date ব্যবহার করে, যা অপরিবর্তিত আছে।
+    const existingUserBooking = await bookingsCollection.findOne({ roomId, email, date });
+    if (existingUserBooking) {
+      return res.status(400).send({ message: "You already booked this room on this date" });
+    }
+    const existingRoomBooking = await bookingsCollection.findOne({ roomId, date });
+    if (existingRoomBooking) {
+      return res.status(409).send({ message: "Room already booked on this date" });
+    }
 
-    if (existingUserBooking) {
-      return res.status(400).send({ message: "You already booked this room on this date" });
-    }
+    // ৩. আমার দেওয়া নতুন অংশটি এখানে যোগ হবে
+    // এটি 'booking' এর সকল তথ্যের সাথে শুধু নতুন 'createdAt' ফিল্ডটি যোগ করে একটি নতুন অবজেক্ট তৈরি করবে
+    const bookingWithTimestamp = {
+        ...booking,
+        createdAt: new Date() 
+    };
 
-    // Check whether the room has already been booked by another user for the selected date.
-    const existingRoomBooking = await bookingsCollection.findOne({
-      roomId,
-      date,
-    });
-
-    if (existingRoomBooking) {
-      return res.status(409).send({ message: "Room already booked on this date" });
-    }
-
-    // Insert booking if all good
-    const result = await bookingsCollection.insertOne(booking);
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: "Failed to book room" });
-  }
+    // ৪. সবশেষে, ডাটাবেসে নতুন তথ্যসহ অবজেক্টটি (bookingWithTimestamp) সেভ করা হচ্ছে
+    const result = await bookingsCollection.insertOne(bookingWithTimestamp);
+    res.send(result);
+    
+  } catch (error) {
+    res.status(500).send({ error: "Failed to book room" });
+  }
 });
 
 // Get bookings for a specific user by email 
